@@ -1,80 +1,50 @@
-import { EnvMap, captureProcessEnv, parseEnvFile } from './env';
-import { saveSnapshot, getSnapshot } from './storage';
+export interface EnvMap {
+  [key: string]: string;
+}
 
-export interface SnapshotOptions {
-  /** Capture from a .env file instead of process.env */
-  fromFile?: string;
-  /** Only include these keys when capturing from process.env */
-  keys?: string[];
+export interface DiffResult {
+  added: string[];   // keys in current but not in snapshot
+  removed: string[]; // keys in snapshot but not in current
+  changed: string[]; // keys in both but with different values
 }
 
 /**
- * Creates a new snapshot with the given name.
- * Source is either a .env file or the current process environment.
+ * Apply a snapshot env over a base env, returning the merged result.
  */
-export async function createSnapshot(
-  name: string,
-  options: SnapshotOptions = {}
-): Promise<void> {
-  if (!name || !name.trim()) {
-    throw new Error('Snapshot name must not be empty.');
-  }
-
-  let env: EnvMap;
-
-  if (options.fromFile) {
-    env = parseEnvFile(options.fromFile);
-  } else {
-    env = captureProcessEnv(options.keys);
-  }
-
-  if (Object.keys(env).length === 0) {
-    throw new Error('No environment variables captured. Snapshot not saved.');
-  }
-
-  await saveSnapshot(name.trim(), env);
+export function applySnapshot(base: EnvMap, snapshot: EnvMap): EnvMap {
+  return { ...base, ...snapshot };
 }
 
 /**
- * Restores a snapshot by applying its values to process.env.
- * Returns the applied EnvMap.
+ * Diff a snapshot env against a current env.
+ * "added" means present in current but absent in snapshot.
+ * "removed" means present in snapshot but absent in current.
+ * "changed" means present in both but values differ.
  */
-export async function restoreSnapshot(name: string): Promise<EnvMap> {
-  if (!name || !name.trim()) {
-    throw new Error('Snapshot name must not be empty.');
-  }
+export function diffSnapshot(snapshot: EnvMap, current: EnvMap): DiffResult {
+  const snapKeys = new Set(Object.keys(snapshot));
+  const currKeys = new Set(Object.keys(current));
 
-  const env = await getSnapshot(name.trim());
-
-  if (!env) {
-    throw new Error(`Snapshot "${name}" not found.`);
-  }
-
-  for (const [key, value] of Object.entries(env)) {
-    process.env[key] = value;
-  }
-
-  return env;
-}
-
-/**
- * Compares two snapshots and returns added, removed, and changed keys.
- */
-export async function diffSnapshots(
-  nameA: string,
-  nameB: string
-): Promise<{ added: string[]; removed: string[]; changed: string[] }> {
-  const [a, b] = await Promise.all([getSnapshot(nameA), getSnapshot(nameB)]);
-
-  if (!a) throw new Error(`Snapshot "${nameA}" not found.`);
-  if (!b) throw new Error(`Snapshot "${nameB}" not found.`);
-
-  const keysA = new Set(Object.keys(a));
-  const keysB = new Set(Object.keys(b));
-
-  const added = [...keysB].filter((k) => !keysA.has(k));
-  const removed = [...keysA].filter((k) => !keysB.has(k));
-  const changed = [...keysA].filter((k) => keysB.has(k) && a[k] !== b[k]);
+  const added = [...currKeys].filter(k => !snapKeys.has(k));
+  const removed = [...snapKeys].filter(k => !currKeys.has(k));
+  const changed = [...snapKeys]
+    .filter(k => currKeys.has(k) && snapshot[k] !== current[k]);
 
   return { added, removed, changed };
+}
+
+/**
+ * Filter an env map to only include keys matching a prefix.
+ */
+export function filterByPrefix(env: EnvMap, prefix: string): EnvMap {
+  return Object.fromEntries(
+    Object.entries(env).filter(([k]) => k.startsWith(prefix))
+  );
+}
+
+/**
+ * Merge multiple env maps left-to-right (later maps win on conflict).
+ */
+export function mergeEnvMaps(...maps: EnvMap[]): EnvMap {
+  return Object.assign({}, ...maps);
 }
