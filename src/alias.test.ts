@@ -26,6 +26,12 @@ describe('alias', () => {
     expect(() => addAlias('x', 'missing', '/tmp')).toThrow("Snapshot 'missing' does not exist");
   });
 
+  it('addAlias throws if alias already exists', () => {
+    const data = { ...mockData(), aliases: { p: 'prod' } };
+    vi.spyOn(storage, 'loadSnapshots').mockReturnValue(data as any);
+    expect(() => addAlias('p', 'dev', '/tmp')).toThrow("Alias 'p' already exists");
+  });
+
   it('removeAlias deletes existing alias', () => {
     const data = { ...mockData(), aliases: { p: 'prod' } };
     vi.spyOn(storage, 'loadSnapshots').mockReturnValue(data as any);
@@ -55,5 +61,10 @@ describe('alias', () => {
     const data = { ...mockData(), aliases: { p: 'prod', d: 'dev' } };
     vi.spyOn(storage, 'loadSnapshots').mockReturnValue(data as any);
     expect(listAliases('/tmp')).toEqual({ p: 'prod', d: 'dev' });
+  });
+
+  it('listAliases returns empty object when no aliases exist', () => {
+    vi.spyOn(storage, 'loadSnapshots').mockReturnValue(mockData() as any);
+    expect(listAliases('/tmp')).toEqual({});
   });
 });
