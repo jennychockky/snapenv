@@ -63,3 +63,21 @@ export function listTemplateVariables(template: EnvTemplate): string {
     })
     .join("\n");
 }
+
+/**
+ * Returns the names of all required variables in a template that are not
+ * satisfied by the provided overrides and have no default value.
+ */
+export function getMissingVariables(
+  template: EnvTemplate,
+  overrides: Record<string, string> = {}
+): string[] {
+  return template.variables
+    .filter(
+      (v) =>
+        v.required &&
+        overrides[v.name] === undefined &&
+        v.defaultValue === undefined
+    )
+    .map((v) => v.name);
+}
