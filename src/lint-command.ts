@@ -17,14 +17,7 @@ export function registerLintCommand(program: Command): void {
         process.exit(1);
       }
 
-      let rules: LintRule[] = [...builtinRules];
-      if (opts.uppercase === false) {
-        rules = rules.filter((r) => r.name !== 'uppercase-key');
-      }
-      if (opts.empty === false) {
-        rules = rules.filter((r) => r.name !== 'no-empty-value');
-      }
-
+      const rules = buildRules(opts);
       const results = lintEnvMap(snapshot.env, rules);
 
       if (opts.json) {
@@ -35,4 +28,19 @@ export function registerLintCommand(program: Command): void {
 
       if (results.length > 0) process.exit(1);
     });
+}
+
+/**
+ * Builds the list of lint rules to apply based on CLI options.
+ * Rules can be selectively disabled via --no-* flags.
+ */
+function buildRules(opts: { uppercase?: boolean; empty?: boolean }): LintRule[] {
+  let rules: LintRule[] = [...builtinRules];
+  if (opts.uppercase === false) {
+    rules = rules.filter((r) => r.name !== 'uppercase-key');
+  }
+  if (opts.empty === false) {
+    rules = rules.filter((r) => r.name !== 'no-empty-value');
+  }
+  return rules;
 }
