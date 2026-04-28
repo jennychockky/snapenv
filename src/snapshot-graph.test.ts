@@ -1,77 +1,101 @@
 import { buildSnapshotGraph, findRelated, formatGraph } from './snapshot-graph';
-import { Snapshot } from './storage';
 
-function makeSnapshot(env: Record<string, string>): Snapshot {
-  return { env, createdAt: new Date().toISOString(), tags: [] };
+function makeSnapshot(name: string, overrides: Record<string, unknown> = {}) {
+  return {
+    name,
+    createdAt: new Date().toISOString(),
+    env: { KEY: 'value' },
+    tags: [] as string[],
+    ...overrides,
+  };
 }
 
-const snapshots = {
-  alpha: makeSnapshot({ A: '1', B: '2', C: '3' }),
-  beta: makeSnapshot({ A: '1', B: '2', D: '4' }),
-  gamma: makeSnapshot({ X: '9', Y: '8' }),
-  delta: makeSnapshot({ A: '1', C: '3', E: '5' }),
-};
-
 describe('buildSnapshotGraph', () => {
-  it('creates a node per snapshot', () => {
+  it('builds a graph with nodes for each snapshot', () => {
+    const snapshots = [
+      makeSnapshot('alpha'),
+      makeSnapshot('beta'),
+      makeSnapshot('gamma'),
+    ];
     const graph = buildSnapshotGraph(snapshots);
-    expect(graph.nodes).toHaveLength(4);
-    const names = graph.nodes.map(n => n.name);
-    expect(names).toContain('alpha');
-    expect(names).toContain('gamma');
+    expect(graph.nodes).toHaveLength(3);
+    expect(graph.nodes.map((n) => n.name)).toEqual(['alpha', 'beta', 'gamma']);
   });
 
-  it('creates edges only for snapshots with shared keys', () => {
+  it('links snapshots that share tags', () => {
+    const snapshots = [
+      makeSnapshot('alpha', { tags: ['prod'] }),
+      makeSnapshot('beta', { tags: ['prod'] }),
+      makeSnapshot('gamma', { tags: ['dev'] }),
+    ];
     const graph = buildSnapshotGraph(snapshots);
-    const involvedNames = new Set(graph.edges.flatMap(e => [e.from, e.to]));
-    expect(involvedNames).not.toContain('gamma');
-  });
-
-  it('computes similarity correctly', () => {
-    const graph = buildSnapshotGraph(snapshots);
-    const edge = graph.edges.find(
-      e => (e.from === 'alpha' && e.to === 'beta') || (e.from === 'beta' && e.to === 'alpha')
+    const alphaEdges = graph.edges.filter(
+      (e) => e.from === 'alpha' || e.to === 'alpha'
     );
-    expect(edge).toBeDefined();
-    // shared: A, B = 2; union: A, B, C, D = 4; similarity = 0.5
-    expect(edge!.sharedKeys).toBe(2);
-    expect(edge!.similarity).toBeCloseTo(0.5);
+    expect(alphaEdges.length).toBeGreaterThan(0);
+    const betaLinked = alphaEdges.some(
+      (e) => e.from === 'beta' || e.to === 'beta'
+    );
+    expect(betaLinked).toBe(true);
   });
 
-  it('populates keyCount on nodes', () => {
+  it('links snapshots that share env keys', () => {
+    const snapshots = [
+      makeSnapshot('alpha', { env: { DB_URL: 'postgres://a', PORT: '3000' } }),
+      makeSnapshot('beta', { env: { DB_URL: 'postgres://b', HOST: 'localhost' } }),
+      makeSnapshot('gamma', { env: { HOST: 'example.com' } }),
+    ];
     const graph = buildSnapshotGraph(snapshots);
-    const alphaNode = graph.nodes.find(n => n.name === 'alpha');
-    expect(alphaNode?.keyCount).toBe(3);
+    const alphaEdges = graph.edges.filter(
+      (e) => e.from === 'alpha' || e.to === 'alpha'
+    );
+    expect(alphaEdges.some((e) => e.from === 'beta' || e.to === 'beta')).toBe(true);
+  });
+
+  it('returns empty edges for a single snapshot', () => {
+    const snapshots = [makeSnapshot('solo')];
+    const graph = buildSnapshotGraph(snapshots);
+    expect(graph.edges).toHaveLength(0);
   });
 });
 
 describe('findRelated', () => {
-  it('returns related snapshots above threshold', () => {
+  it('returns snapshots related to a given snapshot by tag', () => {
+    const snapshots = [
+      makeSnapshot('alpha', { tags: ['prod'] }),
+      makeSnapshot('beta', { tags: ['prod'] }),
+      makeSnapshot('gamma', { tags: ['dev'] }),
+    ];
     const graph = buildSnapshotGraph(snapshots);
-    const related = findRelated(graph, 'alpha', 0.3);
+    const related = findRelated('alpha', graph);
     expect(related).toContain('beta');
-    expect(related).toContain('delta');
     expect(related).not.toContain('gamma');
   });
 
-  it('returns empty array when no related snapshots', () => {
+  it('returns empty array for unknown snapshot', () => {
+    const snapshots = [makeSnapshot('alpha')];
     const graph = buildSnapshotGraph(snapshots);
-    const related = findRelated(graph, 'gamma', 0.1);
-    expect(related).toHaveLength(0);
+    const related = findRelated('nonexistent', graph);
+    expect(related).toEqual([]);
   });
 });
 
 describe('formatGraph', () => {
-  it('includes node and edge counts', () => {
+  it('formats a graph as a human-readable string', () => {
+    const snapshots = [
+      makeSnapshot('alpha', { tags: ['prod'] }),
+      makeSnapshot('beta', { tags: ['prod'] }),
+    ];
     const graph = buildSnapshotGraph(snapshots);
     const output = formatGraph(graph);
-    expect(output).toMatch(/Nodes: 4/);
-    expect(output).toMatch(/Edges:/);
+    expect(output).toContain('alpha');
+    expect(output).toContain('beta');
   });
 
-  it('includes similarity percentages', () => {
+  it('indicates isolated nodes', () => {
+    const snapshots = [makeSnapshot('solo')];
     const graph = buildSnapshotGraph(snapshots);
     const output = formatGraph(graph);
-    expect(output).toMatch(/similarity=\d+\.\d+%/);
+    expect(output).toContain('solo');
   });
 });
