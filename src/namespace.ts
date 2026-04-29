@@ -60,3 +60,26 @@ export function filterByNamespace(
 export function stripNamespace(key: string): string {
   return parseNamespacedKey(key).name;
 }
+
+/**
+ * Rename all snapshot keys belonging to a given namespace by replacing
+ * the namespace prefix with a new namespace name.
+ *
+ * Keys that do not belong to `fromNamespace` are returned unchanged.
+ */
+export function renameNamespace(
+  snapshotNames: string[],
+  fromNamespace: string,
+  toNamespace: string
+): string[] {
+  if (!toNamespace) {
+    throw new Error('toNamespace must be non-empty');
+  }
+  return snapshotNames.map((key) => {
+    const parsed = parseNamespacedKey(key);
+    if (parsed.namespace === fromNamespace) {
+      return buildNamespacedKey(toNamespace, parsed.name);
+    }
+    return key;
+  });
+}
