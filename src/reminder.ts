@@ -21,6 +21,9 @@ export function createReminder(
   message: string,
   intervalDays: number
 ): ReminderRule {
+  if (intervalDays <= 0) {
+    throw new Error(`intervalDays must be a positive number, got ${intervalDays}`);
+  }
   return {
     id: `${snapshotName}-${Date.now()}`,
     snapshotName,
